@@ -1,0 +1,23 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+WORKDIR /workspace
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install poetry
+COPY pyproject.toml poetry.lock* ./
+RUN poetry config virtualenvs.create false \
+    && poetry install --no-root --only main
+
+# Copy source trees
+COPY libs/ ./libs/
+COPY apps/ai_engine/ ./apps/ai_engine/
+
+ENV PYTHONPATH=/workspace:/workspace/apps/ai_engine
+
+CMD ["python", "apps/ai_engine/main.py"]
