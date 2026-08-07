@@ -127,6 +127,10 @@ faiss_index/
 *.db
 *.db-journal
 
+# Uploads
+apps/backend/uploads/*
+!apps/backend/uploads/.gitkeep
+
 # IDEs and editors
 .vscode/
 .idea/

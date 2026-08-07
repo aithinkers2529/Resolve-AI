@@ -1,23 +1,29 @@
 import os
 from pydantic_settings import BaseSettings
+from typing import List
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "Resolve-AI"
-    VERSION: str = "1.0.0"
-    CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+    APP_NAME: str = "Resolve-AI"
+    APP_VERSION: str = "0.1.0"
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    DEBUG: bool = os.getenv("DEBUG", "True").lower() == "true"
+    HOST: str = os.getenv("HOST", "127.0.0.1")
+    PORT: int = int(os.getenv("PORT", "8000"))
     
-    # Database Settings
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/resolve_ai")
+    # Database Settings (Dual PostgreSQL & SQLite support)
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./resolve_ai_demo.db")
     
-    # Redis Cache Settings
+    # Redis Cache & State Settings
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     
-    # JWT Secrets
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "SUPER_SECRET_SECURITY_KEY_FOR_ENTERPRISE_RESOLVE_AI")
+    # CORS Settings
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    
+    # API Secrets & LLM Settings
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "RESOLVE_AI_ENTERPRISE_SECRET_KEY_2026")
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
-
-    # Vector DB
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 Hours
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     CHROMA_DB_PATH: str = os.getenv("CHROMA_DB_PATH", "chroma_db")
 
     class Config:

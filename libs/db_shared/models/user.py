@@ -11,6 +11,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
-    role = Column(String, default="agent") # Roles: admin, agent, customer, auditor
+    role = Column(String, default="CUSTOMER", index=True) # CUSTOMER, SUPPORT_AGENT, FRAUD_ANALYST, POLICY_ANALYST, RESOLUTION_MANAGER, ADMIN
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

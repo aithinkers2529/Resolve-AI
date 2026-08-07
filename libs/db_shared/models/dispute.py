@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Float, JSON, Text
+from sqlalchemy import Column, String, DateTime, Float, JSON, Text, Boolean
 from sqlalchemy.sql import func
 from libs.db_shared.base import Base
 import uuid
@@ -7,6 +7,7 @@ class Dispute(Base):
     __tablename__ = "disputes"
 
     id = Column(String, primary_key=True, default=lambda: f"DISP-{str(uuid.uuid4())[:8].upper()}")
+    title = Column(String, nullable=True)
     customer_id = Column(String, default="CUST-1001", index=True)
     customer_name = Column(String, nullable=False)
     customer_email = Column(String, nullable=False)
@@ -32,6 +33,7 @@ class Dispute(Base):
     resolution_action = Column(String, nullable=True) # Refund, Replacement, Reject, Escalate
     resolution_reason = Column(Text, nullable=True)
     confidence = Column(Float, default=0.0)
+    human_approval_required = Column(Boolean, default=False)
     
     # Additional Context
     customer_history_count = Column(Float, default=0) # Previous claims count

@@ -3,6 +3,7 @@ import sys
 import subprocess
 import time
 import urllib.request
+import urllib.error
 import json
 
 def install_python_deps():
@@ -46,16 +47,20 @@ def start_backend():
     )
     
     print("Waiting for server on port 8000 to start...")
-    # Wait for server to bind and check status
-    time.sleep(5)
-    
-    # Check if process died early
-    if process.poll() is not None:
-        print("Server process terminated immediately! Logs:")
-        out, _ = process.communicate()
-        print(out)
-        sys.exit(1)
-        
+    for _ in range(15):
+        time.sleep(1)
+        if process.poll() is not None:
+            out, _ = process.communicate()
+            print("Server process terminated immediately! Logs:\n", out)
+            sys.exit(1)
+        try:
+            res = urllib.request.urlopen("http://127.0.0.1:8000/health")
+            if res.getcode() == 200:
+                print("Server on port 8000 is ready.")
+                break
+        except Exception:
+            pass
+            
     return process
 
 def run_tests():
@@ -64,57 +69,189 @@ def run_tests():
     
     # Test 1: Health check
     try:
-        health_res = urllib.request.urlopen(f"{base_url}/health").read().decode()
+        health_res = urllib.request.urlopen(f"{base_url}/api/v1/health").read().decode()
         print(f"[OK] Health Check response: {health_res}")
     except Exception as e:
         print(f"[FAIL] Health Check failed: {e}")
         return False
 
-    # Test 2: List seeded disputes
+    # Test 2: Readiness check
     try:
-        disputes_res = urllib.request.urlopen(f"{base_url}/api/v1/disputes/").read().decode()
-        disputes = json.loads(disputes_res)
-        print(f"[OK] Seeded Disputes count: {len(disputes)}")
-        for d in disputes:
-            print(f"  - Claim {d['id']}: Status={d['status']}, Amount=${d['claim_amount']}")
+        ready_res = urllib.request.urlopen(f"{base_url}/api/v1/ready").read().decode()
+        print(f"[OK] Readiness Check response: {ready_res}")
     except Exception as e:
-        print(f"[FAIL] List Disputes failed: {e}")
+        print(f"[FAIL] Readiness Check failed: {e}")
         return False
 
-    # Test 3: Create a new complaint and trigger LangGraph execution
+    # Test 3: Version check
     try:
-        claim_payload = {
-            "customer_name": "Marcus Aurelius",
-            "customer_email": "marcus@philosophy.com",
-            "order_id": "ORD-77492-12",
+        ver_res = urllib.request.urlopen(f"{base_url}/api/v1/version").read().decode()
+        print(f"[OK] Version response: {ver_res}")
+    except Exception as e:
+        print(f"[FAIL] Version check failed: {e}")
+        return False
+
+    # Authenticate as Admin & Customer to obtain tokens
+    admin_token = None
+    customer_token = None
+    try:
+        req = urllib.request.Request(
+            f"{base_url}/api/v1/auth/login",
+            data=json.dumps({"email": "admin@resolve.ai", "password": "password123"}).encode('utf-8'),
+            headers={'Content-Type': 'application/json'}
+        )
+        res = json.loads(urllib.request.urlopen(req).read().decode())
+        admin_token = res["access_token"]
+        
+        req = urllib.request.Request(
+            f"{base_url}/api/v1/auth/login",
+            data=json.dumps({"email": "sarah.j@example.com", "password": "password123"}).encode('utf-8'),
+            headers={'Content-Type': 'application/json'}
+        )
+        res = json.loads(urllib.request.urlopen(req).read().decode())
+        customer_token = res["access_token"]
+        print("[OK] Authenticated admin and customer Bearer tokens issued.")
+    except Exception as e:
+        print(f"[FAIL] Authentication login failed: {e}")
+        return False
+
+    # Test 4: Retrieve seeded customer
+    try:
+        req = urllib.request.Request(
+            f"{base_url}/api/v1/customers/CUST-1001",
+            headers={'Authorization': f'Bearer {admin_token}'}
+        )
+        cust_res = urllib.request.urlopen(req).read().decode()
+        cust = json.loads(cust_res)
+        print(f"[OK] Customer Lookup: ID={cust['id']}, Name={cust['name']}, Risk={cust['risk_rating']}")
+    except Exception as e:
+        print(f"[FAIL] Customer lookup failed: {e}")
+        return False
+
+    # Test 5: Retrieve seeded order
+    try:
+        req = urllib.request.Request(
+            f"{base_url}/api/v1/orders/ORD-98204-11",
+            headers={'Authorization': f'Bearer {admin_token}'}
+        )
+        ord_res = urllib.request.urlopen(req).read().decode()
+        order = json.loads(ord_res)
+        print(f"[OK] Order Lookup: ID={order['id']}, Amount={order['order_amount']}, Currency={order['currency']}")
+    except Exception as e:
+        print(f"[FAIL] Order lookup failed: {e}")
+        return False
+
+    # Test 6: Create new case
+    try:
+        case_payload = {
+            "customer_name": "Sarah Jenkins",
+            "customer_email": "sarah.j@example.com",
+            "order_id": "ORD-58493-29",
             "claim_amount": 420.50,
             "complaint_text": "Received screen screen is completely shattered and won't turn on.",
             "evidence_urls": ["broken_screen_photo_1.png"]
         }
         
         req = urllib.request.Request(
-            f"{base_url}/api/v1/disputes/complaints/create",
-            data=json.dumps(claim_payload).encode('utf-8'),
-            headers={'Content-Type': 'application/json'}
+            f"{base_url}/api/v1/cases/",
+            data=json.dumps(case_payload).encode('utf-8'),
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {customer_token}'
+            }
         )
         
         create_res = urllib.request.urlopen(req).read().decode()
-        dispute = json.loads(create_res)
-        dispute_id = dispute["id"]
-        print(f"[OK] Created Complaint: {dispute_id} | Final Status: {dispute['status']}")
+        case = json.loads(create_res)
+        case_id = case["id"]
+        print(f"[OK] Created Case: {case_id} | Status: {case['status']}")
         
-        # Test 4: Fetch Explainable AI breakdown
-        res_url = f"{base_url}/api/v1/disputes/resolution/{dispute_id}"
-        res_details = json.loads(urllib.request.urlopen(res_url).read().decode())
-        print("[OK] Explainable AI Decision Verification:")
-        print(f"  - Decision: {res_details['decision']}")
-        print(f"  - Reason: {res_details['reason']}")
-        print(f"  - Confidence: {res_details['confidence_score']}")
-        print(f"  - Policy: {res_details['explainable_ai_breakdown']['policy']['clause']}")
-        print(f"  - Fraud risk: {res_details['explainable_ai_breakdown']['fraud_risk']['score']}")
+        # Test 7: Retrieve Case
+        req = urllib.request.Request(
+            f"{base_url}/api/v1/cases/{case_id}",
+            headers={'Authorization': f'Bearer {customer_token}'}
+        )
+        case_res = urllib.request.urlopen(req).read().decode()
+        retrieved_case = json.loads(case_res)
+        print(f"[OK] Retrieved Case: {retrieved_case['id']} | Category: {retrieved_case['category']}")
         
     except Exception as e:
-        print(f"[FAIL] Create Dispute/RAG Workflow execution failed: {e}")
+        print(f"[FAIL] Case creation/retrieval failed: {e}")
+        return False
+
+    # Test 8: Register and retrieve evidence items
+    try:
+        evid_payload = {
+            "dispute_id": case_id,
+            "file_url": "new_unboxing_video.mp4",
+            "file_type": "VIDEO"
+        }
+        req = urllib.request.Request(
+            f"{base_url}/api/v1/cases/{case_id}/evidence",
+            data=json.dumps(evid_payload).encode('utf-8'),
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {customer_token}'
+            }
+        )
+        evid_res = urllib.request.urlopen(req).read().decode()
+        evidence_item = json.loads(evid_res)
+        print(f"[OK] Registered Evidence: ID={evidence_item['id']}, File={evidence_item['file_url']}")
+        
+        # Retrieve all evidence for the case
+        req = urllib.request.Request(
+            f"{base_url}/api/v1/cases/{case_id}/evidence",
+            headers={'Authorization': f'Bearer {customer_token}'}
+        )
+        list_evid = json.loads(urllib.request.urlopen(req).read().decode())
+        print(f"[OK] Total evidence items retrieved: {len(list_evid)}")
+    except Exception as e:
+        print(f"[FAIL] Evidence registration/list failed: {e}")
+        return False
+
+    # Test 9: Exception handler validation (Expect custom 404 response format)
+    try:
+        req = urllib.request.Request(
+            f"{base_url}/api/v1/cases/DISP-NONEXISTENT",
+            headers={'Authorization': f'Bearer {admin_token}'}
+        )
+        urllib.request.urlopen(req)
+        print("[FAIL] Expected 404 not found exception but call succeeded")
+        return False
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            err_data = json.loads(e.read().decode())
+            if not err_data.get("success") and err_data.get("error", {}).get("code") == "CASE_NOT_FOUND":
+                print(f"[OK] Centralized Exception handling verified. Got custom error: {err_data}")
+            else:
+                print(f"[FAIL] Centralized Exception returned wrong JSON format: {err_data}")
+                return False
+        else:
+            print(f"[FAIL] Centralized Exception returned wrong status code: {e.code}")
+            return False
+    except Exception as e:
+        print(f"[FAIL] Centralized Exception handler test failed: {e}")
+        return False
+
+    # Test 10: OpenAPI / Swagger docs check
+    try:
+        urllib.request.urlopen(f"{base_url}/docs")
+        print("[OK] Swagger API documentation loaded successfully.")
+    except Exception as e:
+        print(f"[FAIL] OpenAPI Swagger docs check failed: {e}")
+        return False
+
+    # Test 11: Verify legacy API / disputes listing continues to function (Backwards compatibility)
+    try:
+        req = urllib.request.Request(
+            f"{base_url}/api/v1/disputes/",
+            headers={'Authorization': f'Bearer {admin_token}'}
+        )
+        legacy_res = urllib.request.urlopen(req).read().decode()
+        disputes_list = json.loads(legacy_res)
+        print(f"[OK] Backwards compatibility check: Disputes count: {len(disputes_list)}")
+    except Exception as e:
+        print(f"[FAIL] Backwards compatibility disputes check failed: {e}")
         return False
         
     return True
