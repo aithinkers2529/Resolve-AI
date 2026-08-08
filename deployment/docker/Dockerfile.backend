@@ -11,17 +11,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy poetry config and install dependencies
-RUN pip install poetry
-COPY pyproject.toml poetry.lock* ./
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-root --only main
+# Copy dependencies and install
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy shared libraries and application code
+# Copy shared libraries, seed script, and backend application code
 COPY libs/ ./libs/
 COPY apps/backend/ ./apps/backend/
+COPY seed_demo.py ./seed_demo.py
 
 ENV PYTHONPATH=/workspace:/workspace/apps/backend
 
 EXPOSE 8000
-CMD ["sh", "-c", "uvicorn apps.backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+
+# Auto-seed database if needed on startup, then launch uvicorn
+CMD ["sh", "-c", "python seed_demo.py || true; uvicorn apps.backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

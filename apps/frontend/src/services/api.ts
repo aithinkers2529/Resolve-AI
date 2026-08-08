@@ -1,8 +1,10 @@
 import axios from 'axios';
 import { Dispute, AgentLog } from '../types';
 
+const baseUrl = ((import.meta as any).env?.VITE_API_BASE_URL || '') + '/api/v1';
+
 const client = axios.create({
-  baseURL: (import.meta.env.VITE_API_BASE_URL || '') + '/api/v1',
+  baseURL: baseUrl,
   headers: {
     'Content-Type': 'application/json',
   },

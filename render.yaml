@@ -17,6 +17,7 @@ services:
   - type: web
     name: resolve-backend
     env: docker
+    dockerContext: .
     dockerfilePath: deployment/docker/Dockerfile.backend
     plan: free
     envVars:
