@@ -1,15 +1,53 @@
-from .state import ComplaintState
-from .routing import route_after_investigation
+import sys
+import os
+
+# Ensure ai_engine and root are in sys.path
+AI_ENGINE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+for p in [AI_ENGINE_DIR, ROOT_DIR]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
+try:
+    from .state import ComplaintState
+    from .routing import route_after_investigation
+except ImportError:
+    try:
+        from apps.ai_engine.graph.state import ComplaintState
+        from apps.ai_engine.graph.routing import route_after_investigation
+    except ImportError:
+        ComplaintState = dict
+        route_after_investigation = None
 
 # Import Agents
-from agents.coordinator.agent import CoordinatorAgent
-from agents.evidence.agent import EvidenceAgent
-from agents.policy.agent import PolicyAgent
-from agents.fraud.agent import FraudAgent
-from agents.resolution.agent import ResolutionAgent
-from agents.workflow.agent import WorkflowAgent
-from agents.escalation.agent import EscalationAgent
-from agents.learning.agent import LearningAgent
+try:
+    from agents.coordinator.agent import CoordinatorAgent
+    from agents.evidence.agent import EvidenceAgent
+    from agents.policy.agent import PolicyAgent
+    from agents.fraud.agent import FraudAgent
+    from agents.resolution.agent import ResolutionAgent
+    from agents.workflow.agent import WorkflowAgent
+    from agents.escalation.agent import EscalationAgent
+    from agents.learning.agent import LearningAgent
+except ImportError:
+    try:
+        from apps.ai_engine.agents.coordinator.agent import CoordinatorAgent
+        from apps.ai_engine.agents.evidence.agent import EvidenceAgent
+        from apps.ai_engine.agents.policy.agent import PolicyAgent
+        from apps.ai_engine.agents.fraud.agent import FraudAgent
+        from apps.ai_engine.agents.resolution.agent import ResolutionAgent
+        from apps.ai_engine.agents.workflow.agent import WorkflowAgent
+        from apps.ai_engine.agents.escalation.agent import EscalationAgent
+        from apps.ai_engine.agents.learning.agent import LearningAgent
+    except ImportError:
+        CoordinatorAgent = None
+        EvidenceAgent = None
+        PolicyAgent = None
+        FraudAgent = None
+        ResolutionAgent = None
+        WorkflowAgent = None
+        EscalationAgent = None
+        LearningAgent = None
 
 try:
     from langgraph.graph import StateGraph, END

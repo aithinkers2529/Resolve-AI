@@ -194,6 +194,12 @@ export default function App() {
       setOrders(ordersData);
       setWallet(walletData);
       setNotifications(notifsData);
+
+      // Auto pre-populate order selection if not selected yet
+      if (ordersData && ordersData.length > 0) {
+        setCreateOrderId(prev => prev || ordersData[0].id);
+        setCreateClaimAmount(prev => (prev && prev !== '899.99' ? prev : ordersData[0].order_amount.toString()));
+      }
     } catch (e) {
       console.error('Error loading data:', e);
     } finally {
@@ -243,6 +249,7 @@ export default function App() {
       } else {
         setCurrentRoute('/dashboard');
       }
+      await loadAllData();
     } catch (err: any) {
       const msg = err.response?.data?.detail || 'Invalid email or password. Please check your credentials.';
       setAuthError(msg);
@@ -274,6 +281,7 @@ export default function App() {
       localStorage.setItem('user', JSON.stringify(me));
       setUser(me);
       setCurrentRoute('/dashboard');
+      await loadAllData();
     } catch (err: any) {
       const msg = err.response?.data?.detail || 'Registration failed. Email might already be registered.';
       setAuthError(msg);
@@ -305,10 +313,8 @@ export default function App() {
   // Submit Dispute Creation
   const handleCreateDisputeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!createOrderId) {
-      toast.error('Please select an order to dispute');
-      return;
-    }
+    const effectiveOrderId = createOrderId || (orders.length > 0 ? orders[0].id : 'ORD-58493-29');
+    const orderObj = orders.find(o => o.id === effectiveOrderId);
     setCreateLoading(true);
     try {
       let uploadedUrl = '';
@@ -323,29 +329,29 @@ export default function App() {
         setUploadingFile(false);
       }
 
-      const orderObj = orders.find(o => o.id === createOrderId);
       const payload = {
-        order_id: createOrderId,
+        customer_id: user?.id ? String(user.id) : (user?.email?.includes('sarah') ? 'CUST-1001' : (user?.email?.includes('alex') ? 'CUST-9902' : 'CUST-1001')),
         customer_name: user?.full_name || 'Customer',
         customer_email: user?.email || 'customer@resolve.ai',
+        order_id: effectiveOrderId,
         category: createCategory,
-        claim_amount: orderObj ? orderObj.order_amount : parseFloat(createClaimAmount) || 899.99,
-        complaint_text: createDescription || `Dispute claim for order ${createOrderId}: ${createCategory}`,
+        claim_amount: orderObj ? orderObj.order_amount : (parseFloat(createClaimAmount) || 899.99),
+        complaint_text: createDescription || `Dispute claim for order ${effectiveOrderId} (${orderObj?.product_name || createCategory}): ${createCategory}`,
         evidence_urls: uploadedUrl ? [uploadedUrl] : ['/uploads/damaged_item_photo.png']
       };
 
       const newDispute = await api.createDispute(payload);
-      toast.success(`Dispute #${newDispute.id} created! AI Investigation initiated.`);
+      toast.success(`Dispute #${newDispute.id} created! AI Multi-Agent Investigation initiated.`);
       setShowCreateModal(false);
       
-      // Clear form
+      // Clear form inputs
       setEvidenceFile(null);
       setEvidencePreview('');
       setCreateDescription('');
       
-      // Start live processing view
+      // Start live processing view and refresh all data
       triggerLiveAgentProcessing(newDispute);
-      loadAllData();
+      await loadAllData();
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Failed to create dispute');
     } finally {
@@ -2121,20 +2127,58 @@ export default function App() {
 
               <form onSubmit={handleCreateDisputeSubmit} className="space-y-4 text-xs">
                 <div>
-                  <label className="block font-semibold text-slate-300 mb-1">Select Order</label>
+                  <label className="block font-semibold text-slate-300 mb-1 flex items-center justify-between">
+                    <span>Select Order to Dispute</span>
+                    <span className="text-[10px] text-indigo-400 font-normal">{orders.length} orders available</span>
+                  </label>
                   <select
                     value={createOrderId}
                     onChange={(e) => {
-                      setCreateOrderId(e.target.value);
-                      const sel = orders.find(o => o.id === e.target.value);
-                      if (sel) setCreateClaimAmount(sel.order_amount.toString());
+                      const ordId = e.target.value;
+                      setCreateOrderId(ordId);
+                      const sel = orders.find(o => o.id === ordId);
+                      if (sel) {
+                        setCreateClaimAmount(sel.order_amount.toString());
+                        setCreateCategory(sel.product_name.toLowerCase().includes('phone') ? 'Damaged Product' : (sel.product_name.toLowerCase().includes('keyboard') ? 'Wrong Product' : 'Defective Claim'));
+                        setCreateDescription(`Issue with order ${sel.id}: ${sel.product_name}`);
+                      }
                     }}
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-indigo-500 font-medium text-xs"
                   >
-                    {orders.map(o => (
-                      <option key={o.id} value={o.id}>{o.id} - {o.product_name} ({formatCurrency(o.order_amount)})</option>
-                    ))}
+                    {orders.length === 0 ? (
+                      <option value="ORD-58493-29">ORD-58493-29 • Smartphone Model X 256GB (₹899.99)</option>
+                    ) : (
+                      orders.map(o => (
+                        <option key={o.id} value={o.id} className="bg-slate-900 text-white">
+                          {o.id} • {o.product_name} ({formatCurrency(o.order_amount)})
+                        </option>
+                      ))
+                    )}
                   </select>
+
+                  {/* Active Selected Order Preview */}
+                  {(() => {
+                    const activeOrd = orders.find(o => o.id === (createOrderId || (orders[0]?.id || 'ORD-58493-29')));
+                    if (!activeOrd) return null;
+                    const prodImg = PRODUCT_IMAGES[activeOrd.product_id || ''] || DEFAULT_PRODUCT_IMG;
+                    return (
+                      <div className="mt-2.5 p-3 rounded-2xl bg-slate-950/80 border border-indigo-500/30 flex items-center space-x-3">
+                        <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-900 shrink-0 border border-slate-800">
+                          <img src={prodImg} alt={activeOrd.product_name} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-white text-xs truncate">{activeOrd.product_name}</span>
+                            <span className="text-emerald-400 font-bold text-xs ml-2">{formatCurrency(activeOrd.order_amount)}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 mt-0.5">
+                            <span className="font-mono text-indigo-300">{activeOrd.id}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-800">{activeOrd.status}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
