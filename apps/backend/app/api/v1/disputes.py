@@ -7,9 +7,17 @@ from typing import List, Dict, Any
 import sys
 import os
 
-# Include AI engine path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "ai_engine")))
-from graph.definition import app_graph
+# Universal AI engine graph import
+try:
+    from apps.ai_engine.graph.definition import app_graph
+except ImportError:
+    try:
+        from ai_engine.graph.definition import app_graph
+    except ImportError:
+        try:
+            from graph.definition import app_graph
+        except ImportError:
+            app_graph = None
 
 router = APIRouter()
 
