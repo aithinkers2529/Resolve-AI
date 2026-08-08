@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     
     # CORS Settings
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    CORS_ORIGINS: List[str] = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,*").split(",")]
     
     # API Secrets & LLM Settings
     SECRET_KEY: str = os.getenv("SECRET_KEY", "RESOLVE_AI_ENTERPRISE_SECRET_KEY_2026")
