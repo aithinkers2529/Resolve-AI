@@ -1255,11 +1255,12 @@ export default function App() {
                       <td className="py-3.5 px-4 text-right">
                         <button
                           onClick={() => {
+                            setSelectedDispute(d);
                             setActiveDisputeId(d.id);
                             loadDisputeDetails(d.id);
                             setCurrentRoute(`/disputes/${d.id}`);
                           }}
-                          className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-colors"
+                          className="px-3 py-1 bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors"
                         >
                           View Investigation
                         </button>
@@ -1839,6 +1840,7 @@ export default function App() {
                         <td className="py-3.5 px-4 text-right space-x-1.5">
                           <button
                             onClick={() => {
+                              setSelectedDispute(d);
                               setActiveDisputeId(d.id);
                               loadDisputeDetails(d.id);
                               setCurrentRoute(`/disputes/${d.id}`);
@@ -2035,6 +2037,8 @@ export default function App() {
                   {n.dispute_id && (
                     <button
                       onClick={() => {
+                        const found = disputes.find(d => d.id === n.dispute_id);
+                        if (found) setSelectedDispute(found);
                         setActiveDisputeId(n.dispute_id!);
                         loadDisputeDetails(n.dispute_id!);
                         setCurrentRoute(`/disputes/${n.dispute_id}`);
