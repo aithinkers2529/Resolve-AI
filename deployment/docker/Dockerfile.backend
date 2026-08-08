@@ -17,10 +17,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy shared libraries, seed script, and backend application code
 COPY libs/ ./libs/
+COPY apps/ai_engine/ ./apps/ai_engine/
 COPY apps/backend/ ./apps/backend/
 COPY seed_demo.py ./seed_demo.py
 
-ENV PYTHONPATH=/workspace:/workspace/apps/backend
+ENV PYTHONPATH=/workspace:/workspace/apps/backend:/workspace/apps/ai_engine
 
 EXPOSE 8000
 
