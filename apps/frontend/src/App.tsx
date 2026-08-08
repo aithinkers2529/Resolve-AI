@@ -174,12 +174,22 @@ export default function App() {
     }
   }, []);
 
-  // Fetch data whenever user/route changes
+  // Fetch data whenever user/auth changes
   useEffect(() => {
     if (user && token) {
       loadAllData();
     }
-  }, [user, token, currentRoute]);
+  }, [user, token]);
+
+  // If navigating directly to a dispute case, auto-load its trace & passport
+  useEffect(() => {
+    if (currentRoute.startsWith('/disputes/')) {
+      const activeId = currentRoute.replace('/disputes/', '').trim();
+      if (activeId) {
+        loadDisputeDetails(activeId);
+      }
+    }
+  }, [currentRoute]);
 
   const loadAllData = async () => {
     setLoading(true);
@@ -1380,19 +1390,48 @@ export default function App() {
 
   // 5. COMPLETE DISPUTE INVESTIGATION PAGE (/disputes/:id)
   const renderDisputeInvestigation = () => {
-    if (!selectedDispute) {
+    const routeId = currentRoute.startsWith('/disputes/') ? currentRoute.replace('/disputes/', '').trim() : '';
+    const activeDisp = selectedDispute && selectedDispute.id === routeId 
+      ? selectedDispute 
+      : (disputes.find(d => d.id === routeId) || selectedDispute);
+
+    if (!activeDisp) {
       return (
-        <div className="max-w-7xl mx-auto px-4 py-16 text-center text-slate-400 space-y-4">
-          <RefreshCw className="w-8 h-8 animate-spin mx-auto text-indigo-400" />
-          <p>Loading full multi-agent case investigation...</p>
+        <div className="max-w-4xl mx-auto px-4 py-16 text-center space-y-4">
+          <div className="p-8 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+            <RefreshCw className="w-8 h-8 animate-spin mx-auto text-indigo-400" />
+            <h2 className="text-lg font-bold text-white">Loading Investigation Case #{routeId || '...'}</h2>
+            <p className="text-xs text-slate-400">Fetching multimodal evidence, OCR scan records, and policy clause citations...</p>
+            <div className="pt-2 flex justify-center space-x-3">
+              <button
+                onClick={() => setCurrentRoute(user?.role === 'ADMIN' ? '/admin' : '/dashboard')}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl"
+              >
+                ← Back to Dashboard
+              </button>
+              {routeId && (
+                <button
+                  onClick={() => loadDisputeDetails(routeId)}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl"
+                >
+                  Retry Loading
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       );
     }
 
-    const isHighFraud = (selectedDispute.fraudScore || 0) >= 0.60;
-    const isApproved = selectedDispute.status === 'Approved' || selectedDispute.status === 'RESOLVED' || selectedDispute.status === 'Resolved';
-    const isRejected = selectedDispute.status === 'Rejected';
+    const isHighFraud = (activeDisp.fraudScore || 0) >= 0.60;
+    const isApproved = activeDisp.status === 'Approved' || activeDisp.status === 'RESOLVED' || activeDisp.status === 'Resolved';
+    const isRejected = activeDisp.status === 'Rejected';
     const isAdmin = user?.role === 'ADMIN';
+
+    // Extract real uploaded evidence photo or matching order photo
+    const evidenceImg = (activeDisp.evidenceUrls && activeDisp.evidenceUrls.length > 0 && activeDisp.evidenceUrls[0])
+      ? activeDisp.evidenceUrls[0]
+      : PRODUCT_IMAGES[orders.find(o => o.id === activeDisp.orderId)?.product_id || ''] || PRODUCT_IMAGES['PROD-PHONE'];
 
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -1406,7 +1445,7 @@ export default function App() {
               <span>← Back to {isAdmin ? 'Admin Console' : 'Claims List'}</span>
             </button>
             <div className="flex items-center space-x-3">
-              <h1 className="text-2xl font-black text-white font-mono">CASE #{selectedDispute.id}</h1>
+              <h1 className="text-2xl font-black text-white font-mono">CASE #{activeDisp.id}</h1>
               <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
                 isApproved
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
@@ -1414,7 +1453,7 @@ export default function App() {
                   ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                   : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
               }`}>
-                {selectedDispute.status.replace('_', ' ')}
+                {activeDisp.status.replace('_', ' ')}
               </span>
             </div>
           </div>
@@ -1423,21 +1462,21 @@ export default function App() {
           {isAdmin && (
             <div className="flex items-center space-x-2">
               <button
-                onClick={() => handleAdminApprove(selectedDispute.id)}
+                onClick={() => handleAdminApprove(activeDisp.id)}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-lg transition-colors flex items-center space-x-1.5"
               >
                 <CheckCircle className="w-4 h-4" />
                 <span>Approve Resolution</span>
               </button>
               <button
-                onClick={() => handleAdminReject(selectedDispute.id)}
+                onClick={() => handleAdminReject(activeDisp.id)}
                 className="px-4 py-2 bg-rose-600/80 hover:bg-rose-600 text-white text-xs font-bold rounded-xl transition-colors flex items-center space-x-1.5"
               >
                 <XCircle className="w-4 h-4" />
                 <span>Reject Claim</span>
               </button>
               <button
-                onClick={() => handleAdminRequestEvidence(selectedDispute.id)}
+                onClick={() => handleAdminRequestEvidence(activeDisp.id)}
                 className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center space-x-1.5"
               >
                 <Upload className="w-4 h-4" />
@@ -1457,26 +1496,26 @@ export default function App() {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
                 <div>
                   <span className="text-slate-500">Customer</span>
-                  <p className="font-bold text-slate-200 mt-0.5">{selectedDispute.customerName}</p>
-                  <p className="text-[10px] text-slate-400">{selectedDispute.customerEmail}</p>
+                  <p className="font-bold text-slate-200 mt-0.5">{activeDisp.customerName}</p>
+                  <p className="text-[10px] text-slate-400">{activeDisp.customerEmail}</p>
                 </div>
                 <div>
                   <span className="text-slate-500">Order ID</span>
-                  <p className="font-mono font-bold text-indigo-400 mt-0.5">{selectedDispute.orderId}</p>
+                  <p className="font-mono font-bold text-indigo-400 mt-0.5">{activeDisp.orderId}</p>
                 </div>
                 <div>
                   <span className="text-slate-500">Claim Amount</span>
-                  <p className="font-bold text-white mt-0.5 text-sm">{formatCurrency(selectedDispute.claimAmount)}</p>
+                  <p className="font-bold text-white mt-0.5 text-sm">{formatCurrency(activeDisp.claimAmount)}</p>
                 </div>
                 <div>
                   <span className="text-slate-500">Category</span>
-                  <p className="font-bold text-slate-200 mt-0.5">{selectedDispute.category}</p>
+                  <p className="font-bold text-slate-200 mt-0.5">{activeDisp.category}</p>
                 </div>
               </div>
               <div className="pt-3 border-t border-slate-800 text-xs">
                 <span className="text-slate-500">Customer Statement:</span>
                 <p className="text-slate-300 mt-1 italic bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
-                  "{selectedDispute.complaintText}"
+                  "{activeDisp.complaintText}"
                 </p>
               </div>
             </div>
@@ -1495,7 +1534,7 @@ export default function App() {
                 <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col items-center justify-center space-y-2">
                   <div className="w-full h-36 rounded-lg bg-slate-900 flex items-center justify-center overflow-hidden border border-slate-800 relative">
                     <img 
-                      src={PRODUCT_IMAGES['PROD-PHONE']} 
+                      src={evidenceImg} 
                       alt="Evidence photo"
                       className="w-full h-full object-cover" 
                     />
@@ -1507,11 +1546,11 @@ export default function App() {
                 <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-3">
                   <span className="font-bold text-slate-300">OCR Extracted Serial & Proof:</span>
                   <div className="font-mono text-[11px] p-2.5 rounded bg-slate-900 border border-slate-800 text-indigo-300 whitespace-pre-wrap">
-                    {selectedDispute.ocrText || `Order Total: ${formatCurrency(selectedDispute.claimAmount)}\nItem: ${selectedDispute.category}\nSerial Check: MATCHED\nImpact: CRITICAL DAMAGE DETECTED`}
+                    {activeDisp.ocrText || `Order Total: ${formatCurrency(activeDisp.claimAmount)}\nItem: ${activeDisp.category}\nSerial Check: MATCHED\nImpact: CRITICAL DAMAGE DETECTED`}
                   </div>
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
                     <span>Evidence Confidence:</span>
-                    <span className="font-bold text-emerald-400">{intToPct(selectedDispute.confidence)}</span>
+                    <span className="font-bold text-emerald-400">{intToPct(activeDisp.confidence || 0.95)}</span>
                   </div>
                 </div>
               </div>
@@ -1525,11 +1564,11 @@ export default function App() {
               </h2>
               <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-200">{selectedDispute.policyReference || 'Damage In Transit Policy v2.1 (Section 4.2)'}</span>
-                  <span className="text-emerald-400 font-semibold">{selectedDispute.policyEligible || 'Eligible'}</span>
+                  <span className="font-bold text-slate-200">{activeDisp.policyReference || 'Damage In Transit Policy v2.1 (Section 4.2)'}</span>
+                  <span className="text-emerald-400 font-semibold">{activeDisp.policyEligible || 'Eligible'}</span>
                 </div>
                 <p className="text-slate-400 leading-relaxed">
-                  {selectedDispute.policyNotes || 'Claim submitted within 5 days of carrier delivery. Physical damage verified by visual impact neural model.'}
+                  {activeDisp.policyNotes || 'Claim submitted within 5 days of carrier delivery. Physical damage verified by visual impact neural model.'}
                 </p>
               </div>
             </div>
@@ -1581,7 +1620,7 @@ export default function App() {
 
               <div className="text-center py-2">
                 <div className={`text-4xl font-extrabold ${isHighFraud ? 'text-rose-400' : 'text-emerald-400'}`}>
-                  {intToPct(selectedDispute.fraudScore || 0.08)}
+                  {intToPct(activeDisp.fraudScore || 0.08)}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">Multi-Heuristic Anomaly Index</div>
               </div>
@@ -1591,7 +1630,7 @@ export default function App() {
                 <ul className="space-y-1.5 text-[11px] text-slate-400">
                   <li className="flex items-center space-x-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    <span>Historical claim frequency: {selectedDispute.customerHistoryCount || 0} claims</span>
+                    <span>Historical claim frequency: {activeDisp.customerHistoryCount || 0} claims</span>
                   </li>
                   <li className="flex items-center space-x-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
@@ -1612,18 +1651,18 @@ export default function App() {
                   <Award className="w-5 h-5 text-indigo-400" />
                   <span className="text-xs font-bold uppercase tracking-wider text-white">Decision Passport™</span>
                 </div>
-                <span className="text-[10px] font-mono text-indigo-300">#PASSPORT-{selectedDispute.id}</span>
+                <span className="text-[10px] font-mono text-indigo-300">#PASSPORT-{activeDisp.id}</span>
               </div>
 
               <div className="space-y-3 text-xs">
                 <div>
                   <span className="text-slate-500">Autonomous Decision:</span>
-                  <p className="font-bold text-white text-sm">{passport?.decision || selectedDispute.resolutionAction || 'Replacement'}</p>
+                  <p className="font-bold text-white text-sm">{passport?.decision || activeDisp.resolutionAction || 'Replacement'}</p>
                 </div>
                 <div>
                   <span className="text-slate-500">Final Explainability Rationale:</span>
                   <p className="text-slate-300 text-[11px] leading-relaxed mt-0.5">
-                    {passport?.final_reasoning || selectedDispute.resolutionReason || 'Replacement approved under warranty guidelines. Fraud score clean (8%). Replacement inventory reserved.'}
+                    {passport?.final_reasoning || activeDisp.resolutionReason || 'Replacement approved under warranty guidelines. Fraud score clean (8%). Replacement inventory reserved.'}
                   </p>
                 </div>
                 {replacement && (
