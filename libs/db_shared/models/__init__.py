@@ -14,10 +14,16 @@ from libs.db_shared.models.feedback import CaseFeedback, CaseAppeal
 from libs.db_shared.models.learning import LearningInsight
 from libs.db_shared.models.metrics import AgentMetric, ToolMetric, SLARecord
 from libs.db_shared.models.memory import CaseMemory
+from libs.db_shared.models.wallet import Wallet, Transaction
+from libs.db_shared.models.notification import Notification
+from libs.db_shared.models.replacement import ReplacementShipment
+from libs.db_shared.models.passport import DecisionPassportModel
 
 __all__ = [
     "User", "Dispute", "Customer", "Product", "Order", "EvidenceItem",
     "PolicyRule", "FraudAssessment", "ResolutionRecord", "AgentLog",
     "AgentRun", "AuditLog", "CaseFeedback", "CaseAppeal", "LearningInsight",
-    "AgentMetric", "ToolMetric", "SLARecord", "CaseMemory"
+    "AgentMetric", "ToolMetric", "SLARecord", "CaseMemory",
+    "Wallet", "Transaction", "Notification", "ReplacementShipment", "DecisionPassportModel"
 ]
+

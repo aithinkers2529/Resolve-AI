@@ -19,6 +19,82 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
+export interface OrderItem {
+  id: string;
+  customer_id: string;
+  product_id?: string;
+  product_name: string;
+  order_amount: number;
+  currency?: string;
+  status: string;
+  delivery_date?: string;
+  created_at?: string;
+}
+
+export interface WalletData {
+  id: string;
+  customer_id: string;
+  customer_email: string;
+  balance: number;
+  pending_refunds: number;
+  total_refunded: number;
+  currency: string;
+  transactions: TransactionItem[];
+}
+
+export interface TransactionItem {
+  id: string;
+  type: string;
+  amount: number;
+  currency: string;
+  status: string;
+  description: string;
+  order_id?: string;
+  dispute_id?: string;
+  created_at?: string;
+}
+
+export interface NotificationItem {
+  id: string;
+  customer_id: string;
+  customer_email: string;
+  dispute_id?: string;
+  title: string;
+  message: string;
+  type: string;
+  is_read: boolean;
+  created_at?: string;
+}
+
+export interface ReplacementData {
+  id: string;
+  dispute_id: string;
+  order_id: string;
+  product_name: string;
+  tracking_number: string;
+  carrier: string;
+  status: string;
+  delivery_address?: string;
+  estimated_delivery?: string;
+  created_at?: string;
+}
+
+export interface DecisionPassportData {
+  id: string;
+  dispute_id: string;
+  decision: string;
+  confidence_score: number;
+  fraud_risk_score: number;
+  verified_evidence: any;
+  policy_matched: string;
+  policy_clause: string;
+  customer_context: any;
+  alternatives_evaluated: any[];
+  final_reasoning: string;
+  execution_proof: any;
+  created_at?: string;
+}
+
 function normalizeDispute(item: any): Dispute {
   if (!item) return {} as Dispute;
   return {
@@ -58,6 +134,16 @@ export const api = {
     return res.data;
   },
 
+  // Customer Orders
+  getOrders: async (): Promise<OrderItem[]> => {
+    const res = await client.get('/orders');
+    return Array.isArray(res.data) ? res.data : [];
+  },
+  getOrder: async (id: string): Promise<OrderItem> => {
+    const res = await client.get(`/orders/${id}`);
+    return res.data;
+  },
+
   // Disputes & Cases
   getDisputes: async (): Promise<Dispute[]> => {
     const res = await client.get('/disputes');
@@ -68,7 +154,7 @@ export const api = {
     const res = await client.get(`/disputes/${id}`);
     return normalizeDispute(res.data);
   },
-  createDispute: async (data: any): Promise<any> => {
+  createDispute: async (data: any): Promise<Dispute> => {
     const res = await client.post('/disputes', data);
     return normalizeDispute(res.data);
   },
@@ -80,25 +166,61 @@ export const api = {
     const res = await client.post(`/cases/${id}/reject`);
     return normalizeDispute(res.data);
   },
+  requestEvidence: async (id: string): Promise<Dispute> => {
+    const res = await client.post(`/cases/${id}/request-evidence`);
+    return normalizeDispute(res.data);
+  },
   investigateDispute: async (id: string): Promise<Dispute> => {
     const res = await client.post(`/cases/${id}/investigate`);
     return normalizeDispute(res.data);
   },
   getAgentLogs: async (disputeId: string): Promise<AgentLog[]> => {
     const res = await client.get(`/cases/${disputeId}/trace`);
-    return res.data.map((item: any) => ({
-      id: String(item.id),
-      disputeId: item.dispute_id,
-      agentName: item.agent_name,
-      actionTaken: item.action_taken,
-      logDetails: item.log_details,
+    return (res.data || []).map((item: any) => ({
+      id: String(item.id || Math.random()),
+      disputeId: item.dispute_id || disputeId,
+      agentName: item.agent_name || item.agent || 'Agent',
+      actionTaken: item.action_taken || item.step || 'Processed',
+      logDetails: item.log_details || item.details || '',
       createdAt: item.created_at || new Date().toISOString(),
     }));
   },
-  getDecisionPassport: async (id: string): Promise<any> => {
-    const res = await client.get(`/cases/${id}/decision-passport`);
+  getDecisionPassport: async (id: string): Promise<DecisionPassportData> => {
+    const res = await client.get(`/disputes/${id}/decision-passport`);
     return res.data;
   },
+
+  // Digital Wallet & Transactions
+  getWallet: async (): Promise<WalletData> => {
+    const res = await client.get('/wallet');
+    return res.data;
+  },
+  getTransactions: async (): Promise<TransactionItem[]> => {
+    const res = await client.get('/wallet/transactions');
+    return Array.isArray(res.data) ? res.data : [];
+  },
+
+  // Notifications
+  getNotifications: async (): Promise<NotificationItem[]> => {
+    const res = await client.get('/notifications');
+    return Array.isArray(res.data) ? res.data : [];
+  },
+  markNotificationRead: async (id: string): Promise<any> => {
+    const res = await client.post(`/notifications/${id}/read`);
+    return res.data;
+  },
+  markAllNotificationsRead: async (): Promise<any> => {
+    const res = await client.post('/notifications/read-all');
+    return res.data;
+  },
+
+  // Replacements
+  getReplacement: async (disputeId: string): Promise<ReplacementData> => {
+    const res = await client.get(`/replacements/${disputeId}`);
+    return res.data;
+  },
+
+  // Admin Health & Errors
   getSystemHealth: async (): Promise<any> => {
     const res = await client.get('/admin/system/health');
     return res.data;
@@ -149,4 +271,3 @@ export const api = {
 };
 
 export default api;
-

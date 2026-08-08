@@ -12,7 +12,13 @@ from app.api.deps import get_current_user
 
 router = APIRouter()
 
+from libs.db_shared.models.customer import Customer
+from libs.db_shared.models.order import Order
+from libs.db_shared.models.wallet import Wallet, Transaction
+from libs.db_shared.models.notification import Notification
+
 @router.post("/register", response_model=UserSchema, status_code=status.HTTP_201_CREATED)
+@router.post("/customer/register", response_model=UserSchema, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     """Public customer registration. Role is ALWAYS set to CUSTOMER."""
     existing = db.query(User).filter(User.email == payload.email.lower()).first()
@@ -34,16 +40,87 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
 
-    # Audit event
+    # 1. Create matching Customer record
+    cid = f"CUST-{abs(hash(new_user.email)) % 10000:04d}"
+    cust = db.query(Customer).filter(Customer.email == new_user.email).first()
+    if not cust:
+        cust = Customer(
+            id=cid,
+            email=new_user.email,
+            name=new_user.full_name,
+            phone="+919876500000",
+            account_age_days=1,
+            total_orders_count=2,
+            total_claims_count=0,
+            risk_rating="LOW"
+        )
+        db.add(cust)
+
+    # 2. Create Digital Wallet with welcome credit
+    wallet = db.query(Wallet).filter(Wallet.customer_email == new_user.email).first()
+    if not wallet:
+        wallet = Wallet(
+            customer_id=cid,
+            customer_email=new_user.email,
+            balance=500.0,
+            pending_refunds=0.0,
+            total_refunded=0.0,
+            currency="INR"
+        )
+        db.add(wallet)
+        # Welcome transaction
+        txn = Transaction(
+            customer_id=cid,
+            customer_email=new_user.email,
+            type="CREDIT",
+            amount=500.0,
+            currency="INR",
+            status="COMPLETED",
+            description="Welcome Promo Credit - Resolve-AI Member Reward"
+        )
+        db.add(txn)
+
+    # 3. Create Seed Orders for the new customer
+    existing_orders = db.query(Order).filter(Order.customer_id == cid).count()
+    if existing_orders == 0:
+        o1 = Order(
+            customer_id=cid,
+            product_id="PROD-LAPTOP",
+            product_name="Luxury Laptop Core i5",
+            order_amount=25000.0,
+            status="DELIVERED"
+        )
+        o2 = Order(
+            customer_id=cid,
+            product_id="PROD-PHONE",
+            product_name="Smartphone Model X",
+            order_amount=899.99,
+            status="DELIVERED"
+        )
+        db.add_all([o1, o2])
+
+    # 4. Welcome Notification
+    notif = Notification(
+        customer_id=cid,
+        customer_email=new_user.email,
+        title="Welcome to Resolve-AI!",
+        message="Your account is active with ₹500 welcome wallet balance. Submit claims or chat with our AI Assistant anytime.",
+        type="INFO",
+        is_read=False
+    )
+    db.add(notif)
+
+    # 5. Audit event
     audit = AuditLog(
         operator=new_user.email,
         action="USER_REGISTERED",
-        details=f"User registered with role CUSTOMER (ID: {new_user.id})"
+        details=f"Customer registered and provisioned with wallet & catalog (ID: {cid})"
     )
     db.add(audit)
     db.commit()
 
     return new_user
+
 
 @router.post("/login", response_model=TokenResponse)
 async def login(

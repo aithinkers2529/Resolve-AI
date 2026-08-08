@@ -1,8 +1,23 @@
+import sys
+import os
+
+# Ensure repository root and libs are in Python path
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+LIBS_DIR = os.path.join(ROOT_DIR, "libs")
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+if LIBS_DIR not in sys.path:
+    sys.path.insert(0, LIBS_DIR)
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import os
-from app.api.v1 import disputes, auth, health, cases, customers, orders, evidence, admin, escalations, analytics, learning_routes, assistant, uploads
+from app.api.v1 import (
+    disputes, auth, health, cases, customers, orders, evidence, admin,
+    escalations, analytics, learning_routes, assistant, uploads,
+    wallet_routes, notifications_routes, replacement_routes
+)
+from app.services.passport_service import DecisionPassportService
 from app.services.health_service import HealthService
 from libs.db_shared.session import get_db
 from sqlalchemy.orm import Session
@@ -63,6 +78,22 @@ app.include_router(escalations.router, prefix="/api/v1/escalations", tags=["Huma
 app.include_router(analytics.router, prefix="/api/v1/admin/analytics", tags=["Executive Analytics"])
 app.include_router(learning_routes.router, prefix="/api/v1/admin/learning", tags=["Learning & Memory"])
 app.include_router(assistant.router, prefix="/api/v1/assistant", tags=["Agentic AI Support Assistant"])
+app.include_router(wallet_routes.router, prefix="/api/v1/wallet", tags=["Digital Wallet & Ledger"])
+app.include_router(wallet_routes.router, prefix="/api/wallet", tags=["Digital Wallet Aliases"])
+app.include_router(wallet_routes.router, prefix="/api/v1", tags=["Refunds API"])
+app.include_router(notifications_routes.router, prefix="/api/v1/notifications", tags=["Notifications"])
+app.include_router(notifications_routes.router, prefix="/api/notifications", tags=["Notifications Aliases"])
+app.include_router(replacement_routes.router, prefix="/api/v1/replacements", tags=["Replacements"])
+app.include_router(replacement_routes.router, prefix="/api/replacements", tags=["Replacements Aliases"])
+
+# Decision Passport Endpoints
+@app.get("/api/v1/cases/{dispute_id}/decision-passport")
+@app.get("/api/v1/disputes/{dispute_id}/decision-passport")
+@app.get("/api/disputes/{dispute_id}/decision-passport")
+def get_decision_passport(dispute_id: str, db: Session = Depends(get_db)):
+    service = DecisionPassportService(db)
+    return service.get_or_generate_passport(dispute_id)
+
 
 # Production Health Observability Endpoints
 @app.get("/health")

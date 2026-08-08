@@ -12,13 +12,17 @@ export interface Dispute {
   fraudScore: number;
   fraudRiskLevel?: string;
   policyNotes?: string;
+  policyReference?: string;
+  policyEligible?: string;
   evidenceUrls: string[];
+  ocrText?: string;
   resolutionAction?: string;
   resolutionReason?: string;
   createdAt: string;
   updatedAt: string;
   category?: string;
   confidence?: number;
+  customerHistoryCount?: number;
 }
 
 export interface AgentLog {

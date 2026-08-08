@@ -444,15 +444,25 @@ def get_case_notifications(
     return {"case_id": case_id, "customer_email": case.customer_email, "notifications": notification_events}
 
 
+from app.services.wallet_service import WalletService
+from app.services.notification_service import NotificationService
+from app.services.passport_service import DecisionPassportService
+from libs.db_shared.repositories.replacement_repo import ReplacementRepository
+
 @router.post("/{case_id}/approve", response_model=CaseResponse)
+@router.post("/disputes/{case_id}/approve", response_model=CaseResponse)
 async def approve_case(
     case_id: str,
     current_user: User = Depends(require_permission(RESOLUTION_APPROVE)),
     db: Session = Depends(get_db)
 ):
-    """Human-in-the-loop approval endpoint for escalated cases. Executes resolution via Mock Enterprise APIs."""
+    """Human-in-the-loop approval endpoint for escalated cases. Executes resolution via Mock Enterprise APIs, credits wallet or creates replacement, and notifies customer."""
     service = CaseService(db)
     case = service.get_case(case_id)
+    wallet_service = WalletService(db)
+    notif_service = NotificationService(db)
+    passport_service = DecisionPassportService(db)
+    replacement_repo = ReplacementRepository(db)
 
     exec_state = {
         "complaint_id": case.id,
@@ -468,10 +478,45 @@ async def approve_case(
     agent = WorkflowExecutionAgent()
     await agent.execute(exec_state)
 
+    # If action is Refund, process refund atomically into wallet
+    action = case.resolution_action or "Replacement"
+    if action.lower() == "refund":
+        wallet_service.process_refund(
+            dispute_id=case.id,
+            amount=case.claim_amount,
+            operator_email=current_user.email,
+            reason="Admin approved dispute refund."
+        )
+        notif_service.send_notification(
+            customer_email=case.customer_email,
+            title="Refund Approved & Credited",
+            message=f"Dispute {case.id} was approved. A refund of INR {case.claim_amount:,.2f} has been credited to your Digital Wallet.",
+            notification_type="REFUND_ISSUED",
+            dispute_id=case.id
+        )
+    else:
+        # Create replacement shipment
+        shipment = replacement_repo.create_shipment(
+            dispute_id=case.id,
+            order_id=case.order_id,
+            product_name=case.category or "Replacement Item",
+            customer_id=case.customer_id or f"CUST-1001"
+        )
+        notif_service.send_notification(
+            customer_email=case.customer_email,
+            title="Replacement Order Dispatched",
+            message=f"Dispute {case.id} approved! A replacement item has been reserved and dispatched. Tracking #{shipment.tracking_number} via {shipment.carrier}.",
+            notification_type="REPLACEMENT_SHIPPED",
+            dispute_id=case.id
+        )
+
     updated_case = service.update_case_status(case_id, {
         "status": "Approved",
         "human_approval_required": False
     })
+
+    # Generate Decision Passport
+    passport_service.get_or_generate_passport(case_id)
 
     audit = AuditLog(
         operator=current_user.email,
@@ -490,6 +535,7 @@ async def approve_case(
     return updated_case
 
 @router.post("/{case_id}/reject", response_model=CaseResponse)
+@router.post("/disputes/{case_id}/reject", response_model=CaseResponse)
 def reject_case(
     case_id: str,
     current_user: User = Depends(require_permission(RESOLUTION_APPROVE)),
@@ -498,16 +544,60 @@ def reject_case(
     """Human rejection endpoint for escalated cases."""
     service = CaseService(db)
     case = service.get_case(case_id)
+    notif_service = NotificationService(db)
 
     updated_case = service.update_case_status(case_id, {
         "status": "Rejected",
         "human_approval_required": False
     })
 
+    notif_service.send_notification(
+        customer_email=case.customer_email,
+        title="Dispute Claim Closed",
+        message=f"Dispute {case.id} has been reviewed and closed following compliance guidelines. View your case details for reasoning.",
+        notification_type="ADMIN_APPROVAL",
+        dispute_id=case.id
+    )
+
     audit = AuditLog(
         operator=current_user.email,
         action="HUMAN_REJECTION",
         details=f"Dispute {case_id} rejected by {current_user.email}."
+    )
+    db.add(audit)
+    db.commit()
+
+    return updated_case
+
+@router.post("/{case_id}/request-evidence", response_model=CaseResponse)
+@router.post("/disputes/{case_id}/request-evidence", response_model=CaseResponse)
+def request_evidence_case(
+    case_id: str,
+    current_user: User = Depends(require_permission(RESOLUTION_APPROVE)),
+    db: Session = Depends(get_db)
+):
+    """Request additional photo/invoice evidence from the customer."""
+    service = CaseService(db)
+    case = service.get_case(case_id)
+    notif_service = NotificationService(db)
+
+    updated_case = service.update_case_status(case_id, {
+        "status": "Requires_Review",
+        "human_approval_required": True
+    })
+
+    notif_service.send_notification(
+        customer_email=case.customer_email,
+        title="Additional Evidence Required",
+        message=f"Admin team requested additional photos or receipt evidence for dispute {case.id}. Please upload your files to resume investigation.",
+        notification_type="EVIDENCE_REQUIRED",
+        dispute_id=case.id
+    )
+
+    audit = AuditLog(
+        operator=current_user.email,
+        action="EVIDENCE_REQUESTED",
+        details=f"Additional evidence requested for dispute {case_id} by {current_user.email}."
     )
     db.add(audit)
     db.commit()
@@ -524,3 +614,4 @@ def update_case(
     """Update case status or resolution. Requires RESOLUTION_REVIEW or ADMIN permissions."""
     service = CaseService(db)
     return service.update_case_status(case_id, updates.model_dump(exclude_unset=True))
+
