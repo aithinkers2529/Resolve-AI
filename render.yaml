@@ -7,13 +7,7 @@ services:
     databaseName: resolve_ai
     user: resolve_user
 
-  # 2. Redis In-Memory Cache
-  - type: redis
-    name: resolve-redis
-    plan: free
-    maxmemoryPolicy: allkeys-lru
-
-  # 3. FastAPI Backend & AI Gateway
+  # 2. FastAPI Backend & AI Gateway
   - type: web
     name: resolve-backend
     env: docker
@@ -24,11 +18,6 @@ services:
       - key: DATABASE_URL
         fromDatabase:
           name: resolve-postgres
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: resolve-redis
           property: connectionString
       - key: SECRET_KEY
         generateValue: true
