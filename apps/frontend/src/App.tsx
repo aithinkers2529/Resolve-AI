@@ -221,19 +221,21 @@ export default function App() {
   const loadDisputeDetails = async (id: string) => {
     try {
       const [disp, logs, pass, repl, time] = await Promise.all([
-        api.getDispute(id),
+        api.getDispute(id).catch(() => null),
         api.getAgentLogs(id).catch(() => []),
         api.getDecisionPassport(id).catch(() => null),
         api.getReplacement(id).catch(() => null),
         api.getDisputeTimeline(id).catch(() => [])
       ]);
-      setSelectedDispute(disp);
-      setAgentLogs(logs);
+      if (disp) setSelectedDispute(disp);
+      const cleanLogs = Array.isArray(logs) ? logs : (Array.isArray((logs as any)?.trace) ? (logs as any).trace : (Array.isArray((logs as any)?.logs) ? (logs as any).logs : []));
+      const cleanTimeline = Array.isArray(time) ? time : (Array.isArray((time as any)?.timeline) ? (time as any).timeline : (Array.isArray((time as any)?.events) ? (time as any).events : []));
+      setAgentLogs(cleanLogs);
       setPassport(pass);
       setReplacement(repl);
-      setTimelineEvents(time?.timeline || time || []);
+      setTimelineEvents(cleanTimeline);
     } catch (e) {
-      toast.error('Failed to load dispute details');
+      console.error('Failed to load dispute details:', e);
     }
   };
 
@@ -1582,22 +1584,22 @@ export default function App() {
               </h2>
 
               <div className="space-y-3">
-                {agentLogs.length === 0 ? (
+                {(!Array.isArray(agentLogs) || agentLogs.length === 0) ? (
                   <div className="text-xs text-slate-500 text-center py-4">No agent logs recorded for this case.</div>
                 ) : (
-                  agentLogs.map((log, idx) => (
+                  agentLogs.map((log: any, idx: number) => (
                     <div key={idx} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs flex items-start space-x-3">
                       <div className="w-6 h-6 rounded-full bg-indigo-600/20 text-indigo-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
                         {idx + 1}
                       </div>
                       <div className="flex-1 space-y-1">
                         <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-200">{log.agentName}</span>
+                          <span className="font-bold text-slate-200">{log?.agentName || log?.agent || 'AI Agent'}</span>
                           <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-900 text-indigo-300 border border-slate-800">
-                            {log.actionTaken}
+                            {log?.actionTaken || log?.action || 'Investigation Step'}
                           </span>
                         </div>
-                        <p className="text-slate-400 text-[11px] leading-relaxed">{log.logDetails}</p>
+                        <p className="text-slate-400 text-[11px] leading-relaxed">{log?.logDetails || log?.details || log?.message || 'Execution completed.'}</p>
                       </div>
                     </div>
                   ))
@@ -1621,7 +1623,7 @@ export default function App() {
 
               <div className="text-center py-2">
                 <div className={`text-4xl font-extrabold ${isHighFraud ? 'text-rose-400' : 'text-emerald-400'}`}>
-                  {intToPct(activeDisp.fraudScore || 0.08)}
+                  {intToPct(activeDisp.fraudScore ?? 0.08)}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">Multi-Heuristic Anomaly Index</div>
               </div>
@@ -1686,15 +1688,19 @@ export default function App() {
               </h2>
 
               <div className="space-y-3 pt-2">
-                {timelineEvents.slice(0, 6).map((evt: any, idx: number) => (
-                  <div key={idx} className="flex items-start space-x-2 text-[11px]">
-                    <span className="w-2 h-2 rounded-full bg-indigo-500 mt-1 shrink-0" />
-                    <div>
-                      <div className="font-semibold text-slate-200">{evt.event_type || evt.action || 'Case Event'}</div>
-                      <div className="text-slate-500 text-[10px]">{evt.timestamp || evt.created_at || 'Recently'}</div>
+                {(!Array.isArray(timelineEvents) || timelineEvents.length === 0) ? (
+                  <div className="text-[11px] text-slate-500 italic py-2">No audit events recorded yet.</div>
+                ) : (
+                  timelineEvents.slice(0, 6).map((evt: any, idx: number) => (
+                    <div key={idx} className="flex items-start space-x-2 text-[11px]">
+                      <span className="w-2 h-2 rounded-full bg-indigo-500 mt-1 shrink-0" />
+                      <div>
+                        <div className="font-semibold text-slate-200">{evt?.event_type || evt?.action || evt?.type || 'Case Event'}</div>
+                        <div className="text-slate-500 text-[10px]">{evt?.timestamp || evt?.created_at || 'Recently'}</div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>
